@@ -14,10 +14,22 @@ public class CombinationLockDoor : Door
     public TextMeshProUGUI[] digitDisplays = new TextMeshProUGUI[4];
     public TextMeshProUGUI statusText;
 
-    private char[] enteredDigits = new char[4] { '0', '0', '0', '0' };
-    private int currentSlotIndex = 0;
-    private bool panelOpen = false;
-    private bool isUnlocked = false;
+    private const int CombinationLength = 4;
+    private static readonly Key[] digitKeys = new[]
+    {
+        Key.Digit0, Key.Digit1, Key.Digit2, Key.Digit3, Key.Digit4,
+        Key.Digit5, Key.Digit6, Key.Digit7, Key.Digit8, Key.Digit9
+    };
+    private static readonly Key[] numpadKeys = new[]
+    {
+        Key.Numpad0, Key.Numpad1, Key.Numpad2, Key.Numpad3, Key.Numpad4,
+        Key.Numpad5, Key.Numpad6, Key.Numpad7, Key.Numpad8, Key.Numpad9
+    };
+
+    private char[] enteredDigits = new char[CombinationLength] { '0', '0', '0', '0' };
+    private int currentSlotIndex;
+    private bool panelOpen;
+    private bool isUnlocked;
     private PlayerMovement currentPlayer;
 
     private void OnValidate()
@@ -110,49 +122,40 @@ public class CombinationLockDoor : Door
 
     private bool TryReadDigitKey(out char digit)
     {
-        digit = '0';
+        digit = default;
 
-        if (Keyboard.current.digit0Key.wasPressedThisFrame || Keyboard.current.numpad0Key.wasPressedThisFrame)
-            digit = '0';
-        else if (Keyboard.current.digit1Key.wasPressedThisFrame || Keyboard.current.numpad1Key.wasPressedThisFrame)
-            digit = '1';
-        else if (Keyboard.current.digit2Key.wasPressedThisFrame || Keyboard.current.numpad2Key.wasPressedThisFrame)
-            digit = '2';
-        else if (Keyboard.current.digit3Key.wasPressedThisFrame || Keyboard.current.numpad3Key.wasPressedThisFrame)
-            digit = '3';
-        else if (Keyboard.current.digit4Key.wasPressedThisFrame || Keyboard.current.numpad4Key.wasPressedThisFrame)
-            digit = '4';
-        else if (Keyboard.current.digit5Key.wasPressedThisFrame || Keyboard.current.numpad5Key.wasPressedThisFrame)
-            digit = '5';
-        else if (Keyboard.current.digit6Key.wasPressedThisFrame || Keyboard.current.numpad6Key.wasPressedThisFrame)
-            digit = '6';
-        else if (Keyboard.current.digit7Key.wasPressedThisFrame || Keyboard.current.numpad7Key.wasPressedThisFrame)
-            digit = '7';
-        else if (Keyboard.current.digit8Key.wasPressedThisFrame || Keyboard.current.numpad8Key.wasPressedThisFrame)
-            digit = '8';
-        else if (Keyboard.current.digit9Key.wasPressedThisFrame || Keyboard.current.numpad9Key.wasPressedThisFrame)
-            digit = '9';
-        else
+        if (Keyboard.current == null)
             return false;
 
-        return true;
+        for (int i = 0; i < digitKeys.Length; i++)
+        {
+            if (Keyboard.current[digitKeys[i]].wasPressedThisFrame || Keyboard.current[numpadKeys[i]].wasPressedThisFrame)
+            {
+                digit = (char)('0' + i);
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private void ValidateCombination()
     {
         string entered = new string(enteredDigits);
+        PlayerMovement player = currentPlayer;
 
         if (entered == combination)
         {
             isUnlocked = true;
             UpdateStatusText("Unlocked!");
             ClosePanel();
-            base.Interact(currentPlayer);
+            base.Interact(player);
         }
         else
         {
             UpdateStatusText("Wrong code. Try again.");
             ResetEnteredDigits();
+            UpdateDigitDisplays();
         }
     }
 
@@ -185,6 +188,12 @@ public class CombinationLockDoor : Door
         currentPlayer = null;
     }
 
+    private void OnDisable()
+    {
+        if (panelOpen)
+            ClosePanel();
+    }
+
     private void HidePanel()
     {
         if (combinationPanel != null)
@@ -193,9 +202,7 @@ public class CombinationLockDoor : Door
 
     private void ResetEnteredDigits()
     {
-        for (int i = 0; i < enteredDigits.Length; i++)
-            enteredDigits[i] = '0';
-
+        System.Array.Fill(enteredDigits, '0');
         currentSlotIndex = 0;
     }
 

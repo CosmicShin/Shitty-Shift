@@ -28,6 +28,12 @@ public class DocumentUIManager : MonoBehaviour
             documentPanel.SetActive(false);
     }
 
+    private void OnDestroy()
+    {
+        if (Instance == this)
+            Instance = null;
+    }
+
     public void OpenDocument(ReadablePaper paper, PlayerMovement player)
     {
         if (paper == null) return;
@@ -42,9 +48,9 @@ public class DocumentUIManager : MonoBehaviour
         documentPanel.SetActive(true);
 
         if (titleText != null)
-            titleText.text = paper.documentTitle;
+            titleText.text = string.IsNullOrWhiteSpace(paper.documentTitle) ? "Document" : paper.documentTitle;
 
-        bodyText.text = paper.documentText;
+        bodyText.text = paper.documentText ?? string.Empty;
 
         if (player != null)
             player.SetReadingState(true);

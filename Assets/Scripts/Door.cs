@@ -13,6 +13,8 @@ public class Door : InteractableBase
     public bool autoClose = true;
     public float autoCloseDelay = 3f;
 
+    private const float PositionTolerance = 0.001f;
+
     private Vector3 closedPosition;
     private Vector3 openPosition;
     private bool isOpen;
@@ -55,6 +57,15 @@ public class Door : InteractableBase
     private void Reset()
     {
         interactionPrompt = "Press F to Open";
+    }
+
+    private void OnDisable()
+    {
+        if (moveCoroutine != null)
+            StopCoroutine(moveCoroutine);
+
+        if (autoCloseCoroutine != null)
+            StopCoroutine(autoCloseCoroutine);
     }
 
     public override string GetInteractionPrompt()
@@ -104,7 +115,7 @@ public class Door : InteractableBase
             else
                 transform.position = currentPosition;
 
-            if (Vector3.Distance(currentPosition, targetPosition) < 0.001f)
+            if (Vector3.Distance(currentPosition, targetPosition) < PositionTolerance)
                 break;
 
             yield return null;

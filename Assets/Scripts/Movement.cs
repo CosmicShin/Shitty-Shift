@@ -155,6 +155,18 @@ public class PlayerMovement : MonoBehaviour
 
     void Update()
     {
+        if (IntroManager.IsIntroActive)
+        {
+            currentMove = Vector3.zero;
+            moveInput = Vector2.zero;
+            isRunning = false;
+            HandleGravity();
+            UpdateInteractionUI();
+            UpdateStatsUI();
+            UpdateStaminaVignette();
+            return;
+        }
+
         DetectInteractable();
         HandleInteraction();
         HandleGroundCheck();
@@ -351,7 +363,7 @@ public class PlayerMovement : MonoBehaviour
 
     void TryToggleCamera()
     {
-        if (isHidden || isReading) return;
+        if (isHidden || isReading || IntroManager.IsIntroActive || isLookLocked) return;
         if (fpsCamera == null || tpsCamera == null) return;
 
         isFPS = !isFPS;
@@ -479,6 +491,15 @@ public class PlayerMovement : MonoBehaviour
 
         Cursor.lockState = CursorLockMode.Locked;
         Cursor.visible = false;
+    }
+
+    public void SetLookLock(Transform target, float duration, float intensity = 0f)
+    {
+        isLookLocked = true;
+        lookLockTimer = 0f;
+        lookLockDuration = duration;
+        lookLockTarget = target;
+        lookShakeIntensity = intensity;
     }
 
     public void StopJumpscare()

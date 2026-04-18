@@ -20,14 +20,13 @@ public class EnemyPatrol : MonoBehaviour
     public float jumpscareShakeIntensity = 1f;
     public float faceDistance = 0.7f;
     public float enemyShakeAmount = 0.1f;
+    public float attackOffset = 0f;
 
     private Vector3 targetPosition;
+    private Vector3 attackTargetPosition;
     private bool movingRight;
 
     private PlayerMovement player;
-    private CharacterController playerController;
-    private Collider[] enemyColliders;
-    private bool isIgnoringPlayerCollision;
     private float chargeTimer;
     private bool isAttacking;
     private bool isOnCooldown;
@@ -48,18 +47,17 @@ public class EnemyPatrol : MonoBehaviour
         SetTargetPosition();
         RotateTowardsTarget();
 
-        player = FindObjectOfType<PlayerMovement>();
+        player = FindFirstObjectByType<PlayerMovement>();
 
         if (player == null)
             Debug.LogWarning("EnemyPatrol could not find a PlayerMovement in the scene.");
-        else
-            playerController = player.GetComponent<CharacterController>();
-
-        enemyColliders = GetComponentsInChildren<Collider>();
     }
 
     private void Update()
     {
+        if (IntroManager.IsIntroActive)
+            return;
+
         if (player != null)
             UpdatePlayerDetection();
 
@@ -115,17 +113,23 @@ public class EnemyPatrol : MonoBehaviour
         savedTargetPosition = targetPosition;
         savedMovingRight = movingRight;
 
-        if (!isIgnoringPlayerCollision && playerController != null && enemyColliders != null)
+        if (player != null)
         {
-            foreach (Collider col in enemyColliders)
-            {
-                if (col != null)
-                    Physics.IgnoreCollision(col, playerController, true);
-            }
-            isIgnoringPlayerCollision = true;
+            Vector3 forward = player.transform.forward;
+            forward.y = 0f;
+            forward = forward.sqrMagnitude > 0.0001f ? forward.normalized : Vector3.forward;
+            attackTargetPosition = player.transform.position + forward * faceDistance;
+            attackTargetPosition.y = transform.position.y;
+
+            // Apply attack offset towards the monster
+            Vector3 directionFromPlayerToMonster = (transform.position - player.transform.position).normalized;
+            attackTargetPosition += directionFromPlayerToMonster * attackOffset;
+
+            // Lock look during attack
+            player.SetLookLock(transform, attackDuration + jumpscareDuration, 0f);
         }
 
-        RotateTowards(player.transform.position);
+        RotateTowards(attackTargetPosition);
     }
 
     private void UpdateAttack()
@@ -136,20 +140,17 @@ public class EnemyPatrol : MonoBehaviour
             return;
         }
 
-        Vector3 playerPosition = player.transform.position;
-        playerPosition.y = transform.position.y;
-
-        RotateTowards(playerPosition);
+        RotateTowards(attackTargetPosition);
 
         transform.position = Vector3.MoveTowards(
             transform.position,
-            playerPosition,
+            attackTargetPosition,
             attackSpeed * Time.deltaTime
         );
 
         attackTimer += Time.deltaTime;
 
-        if (attackTimer >= attackDuration || Vector3.Distance(transform.position, playerPosition) < 1f)
+        if (attackTimer >= attackDuration || Vector3.Distance(transform.position, attackTargetPosition) < 0.1f)
         {
             if (Vector3.Distance(transform.position, player.transform.position) <= detectionRadius)
                 player.TakeDamage(player.maxHP * attackDamagePercent);
@@ -183,6 +184,10 @@ public class EnemyPatrol : MonoBehaviour
         Vector3 targetFacePosition = player.transform.position + player.transform.forward * faceDistance;
         targetFacePosition.y = transform.position.y;
 
+        // Apply attack offset towards the monster
+        Vector3 directionFromPlayerToMonster = (transform.position - player.transform.position).normalized;
+        targetFacePosition += directionFromPlayerToMonster * attackOffset;
+
         Vector3 basePosition = Vector3.MoveTowards(
             transform.position,
             targetFacePosition,
@@ -202,16 +207,6 @@ public class EnemyPatrol : MonoBehaviour
     {
         if (player != null)
             player.StopJumpscare();
-
-        if (isIgnoringPlayerCollision && playerController != null && enemyColliders != null)
-        {
-            foreach (Collider col in enemyColliders)
-            {
-                if (col != null)
-                    Physics.IgnoreCollision(col, playerController, false);
-            }
-            isIgnoringPlayerCollision = false;
-        }
 
         isJumpscaring = false;
         isReturningToPatrol = true;
@@ -254,16 +249,6 @@ public class EnemyPatrol : MonoBehaviour
 
     private void ResetAttackState()
     {
-        if (isIgnoringPlayerCollision && playerController != null && enemyColliders != null)
-        {
-            foreach (Collider col in enemyColliders)
-            {
-                if (col != null)
-                    Physics.IgnoreCollision(col, playerController, false);
-            }
-            isIgnoringPlayerCollision = false;
-        }
-
         isAttacking = false;
         isOnCooldown = false;
         isReturningToPatrol = false;
