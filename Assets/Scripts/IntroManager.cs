@@ -186,6 +186,8 @@ public class IntroManager : MonoBehaviour
         skipRequested = false;
         Time.timeScale = 1f;
 
+        HintManager.Instance?.ShowHint("Leave the school, try the stairs on your left");
+
         yield return null;
     }
 }

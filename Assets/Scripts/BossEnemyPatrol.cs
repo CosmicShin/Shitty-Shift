@@ -1,11 +1,10 @@
 using System.Collections;
 using UnityEngine;
 
-public class MopPatrol : MonoBehaviour
+public class BossEnemyPatrol : MonoBehaviour
 {
     public enum EnemyState
     {
-        Lookout,
         Patrol,
         Chase,
         Attack,
@@ -20,40 +19,23 @@ public class MopPatrol : MonoBehaviour
 
     [Header("Speeds")]
     public float patrolSpeed = 2.5f;
-    public float lookoutChaseSpeed = 6f;
     public float patrolChaseSpeed = 4.5f;
     public float returnSpeed = 3f;
     public float rotationSpeed = 8f;
 
-    [Header("Lookout Detection")]
-    public float lookoutDetectionRadius = 14f;
-    public float lookoutAttackRadius = 2f;
-
     [Header("Patrol Detection")]
     public float patrolDetectionRadius = 9f;
+
+    [Header("Patrol Attack")]
     public float patrolAttackRadius = 2.2f;
-
-    [Header("Intro Lock")]
-    public bool introLookoutLocked = true;
-
-    [Header("Lookout / Patrol Pattern")]
-    public float lookoutMinDuration = 2f;
-    public float lookoutMaxDuration = 5f;
-    public float patrolEndPauseMin = 0.4f;
-    public float patrolEndPauseMax = 1.2f;
-    public int patrolEndsBeforeLookoutMin = 2;
-    public int patrolEndsBeforeLookoutMax = 5;
-
-    [Header("Classroom / Safe Zone")]
-    public LayerMask classroomMask = 0;
-    public float classroomCheckRadius = 0.3f;
 
     [Header("Attack Settings")]
     public float chargeTime = 1.2f;
     public float attackSpeed = 8f;
     public float attackDuration = 0.6f;
     public float attackCooldown = 2f;
-    [Range(0f, 1f)] public float attackDamagePercent = 0.2f;
+    [Range(0f, 1f)]
+    public float attackDamagePercent = 0.2f;
     public float jumpscareDuration = 2f;
     public float jumpscareShakeIntensity = 1f;
     public float faceDistance = 0.7f;
@@ -63,48 +45,35 @@ public class MopPatrol : MonoBehaviour
     private PlayerMovement player;
 
     private EnemyState currentState;
-    private EnemyState chaseStartedFromState;
 
     private Vector3 targetPosition;
     private Vector3 attackTargetPosition;
 
     private bool movingRight;
     private bool isOnCooldown;
-    private bool hasSeenPlayerOnce;
-    private bool hasShownDetectionHint;
 
     private float chargeTimer;
     private float attackTimer;
     private float cooldownTimer;
     private float jumpscareTimer;
-    private float lookoutTimer;
-
-    private int patrolEndCount = 0;
-    private int patrolEndsBeforeLookout = 3;
 
     private Vector3 savedPatternPosition;
     private Quaternion savedPatternRotation;
     private Vector3 savedTargetPosition;
     private bool savedMovingRight;
 
-    private Coroutine patrolPauseCoroutine;
-
     private void Start()
     {
         player = FindFirstObjectByType<PlayerMovement>();
 
         if (player == null)
-            Debug.LogWarning("MopPatrol could not find a PlayerMovement in the scene.");
+            Debug.LogWarning("BossEnemyPatrol could not find a PlayerMovement in the scene.");
 
         movingRight = startMovingRight;
         SetTargetPosition();
         RotateTowardsTarget();
 
-        patrolEndsBeforeLookout = Random.Range(patrolEndsBeforeLookoutMin, patrolEndsBeforeLookoutMax + 1);
-
-        hasSeenPlayerOnce = false;
-        hasShownDetectionHint = false;
-        EnterLookoutMode();
+        EnterPatrolMode();
     }
 
     private void Update()
@@ -117,10 +86,6 @@ public class MopPatrol : MonoBehaviour
 
         switch (currentState)
         {
-            case EnemyState.Lookout:
-                UpdateLookout();
-                break;
-
             case EnemyState.Patrol:
                 UpdatePatrol();
                 break;
@@ -143,39 +108,19 @@ public class MopPatrol : MonoBehaviour
         }
     }
 
-    private void EnterLookoutMode()
-    {
-        currentState = EnemyState.Lookout;
-        lookoutTimer = Random.Range(lookoutMinDuration, lookoutMaxDuration);
-
-        if (patrolPauseCoroutine != null)
-        {
-            StopCoroutine(patrolPauseCoroutine);
-            patrolPauseCoroutine = null;
-        }
-    }
-
     private void EnterPatrolMode()
     {
         currentState = EnemyState.Patrol;
-
-        if (patrolPauseCoroutine != null)
-        {
-            StopCoroutine(patrolPauseCoroutine);
-            patrolPauseCoroutine = null;
-        }
-
         SetTargetPosition();
         RotateTowardsTarget();
     }
 
-    private void EnterChaseMode(EnemyState startedFrom)
+    private void EnterChaseMode()
     {
         if (player == null || player.IsHidden)
             return;
 
         currentState = EnemyState.Chase;
-        chaseStartedFromState = startedFrom;
 
         savedPatternPosition = transform.position;
         savedPatternRotation = transform.rotation;
@@ -223,48 +168,11 @@ public class MopPatrol : MonoBehaviour
         currentState = EnemyState.ReturnToPattern;
     }
 
-    private void UpdateLookout()
-    {
-        if (player == null)
-            return;
-
-        if (!player.IsHidden && !IsPlayerInsideClassroom())
-        {
-            float distanceToPlayer = Vector3.Distance(transform.position, player.transform.position);
-
-            if (distanceToPlayer <= lookoutDetectionRadius)
-            {
-                hasSeenPlayerOnce = true;
-                introLookoutLocked = false;
-
-                if (!hasShownDetectionHint)
-                {
-                    hasShownDetectionHint = true;
-                    HintManager.Instance?.ShowHint("Is something there?");
-                }
-
-                EnterChaseMode(EnemyState.Lookout);
-                return;
-            }
-        }
-
-        if (introLookoutLocked && !hasSeenPlayerOnce)
-            return;
-
-        lookoutTimer -= Time.deltaTime;
-        if (lookoutTimer <= 0f)
-        {
-            patrolEndCount = 0;
-            patrolEndsBeforeLookout = Random.Range(patrolEndsBeforeLookoutMin, patrolEndsBeforeLookoutMax + 1);
-            EnterPatrolMode();
-        }
-    }
-
     private void UpdatePatrol()
     {
         if (player != null && CanSeePlayer(patrolDetectionRadius))
         {
-            EnterChaseMode(EnemyState.Patrol);
+            EnterChaseMode();
             return;
         }
 
@@ -277,33 +185,10 @@ public class MopPatrol : MonoBehaviour
         if (Vector3.Distance(transform.position, targetPosition) <= 0.05f)
         {
             transform.position = targetPosition;
-
-            if (patrolPauseCoroutine == null)
-                patrolPauseCoroutine = StartCoroutine(PatrolTurnRoutine());
+            movingRight = !movingRight;
+            SetTargetPosition();
+            RotateTowardsTarget();
         }
-    }
-
-    private IEnumerator PatrolTurnRoutine()
-    {
-        float waitTime = Random.Range(patrolEndPauseMin, patrolEndPauseMax);
-        yield return new WaitForSeconds(waitTime);
-
-        patrolEndCount++;
-
-        if (patrolEndCount >= patrolEndsBeforeLookout)
-        {
-            patrolEndCount = 0;
-            patrolEndsBeforeLookout = Random.Range(patrolEndsBeforeLookoutMin, patrolEndsBeforeLookoutMax + 1);
-            patrolPauseCoroutine = null;
-            EnterLookoutMode();
-            yield break;
-        }
-
-        movingRight = !movingRight;
-        SetTargetPosition();
-        RotateTowardsTarget();
-
-        patrolPauseCoroutine = null;
     }
 
     private void UpdateChase()
@@ -320,27 +205,7 @@ public class MopPatrol : MonoBehaviour
             return;
         }
 
-        if (IsPlayerInsideClassroom())
-        {
-            StartReturnToPattern();
-            return;
-        }
-
         float distanceToPlayer = Vector3.Distance(transform.position, player.transform.position);
-
-        float chaseSpeed;
-        float activeAttackRadius;
-
-        if (chaseStartedFromState == EnemyState.Lookout)
-        {
-            chaseSpeed = lookoutChaseSpeed;
-            activeAttackRadius = lookoutAttackRadius;
-        }
-        else
-        {
-            chaseSpeed = patrolChaseSpeed;
-            activeAttackRadius = patrolAttackRadius;
-        }
 
         Vector3 chaseTarget = player.transform.position;
         chaseTarget.y = transform.position.y;
@@ -348,12 +213,12 @@ public class MopPatrol : MonoBehaviour
         transform.position = Vector3.MoveTowards(
             transform.position,
             chaseTarget,
-            chaseSpeed * Time.deltaTime
+            patrolChaseSpeed * Time.deltaTime
         );
 
         SmoothRotateTowards(chaseTarget);
 
-        if (distanceToPlayer <= activeAttackRadius && !isOnCooldown)
+        if (distanceToPlayer <= patrolAttackRadius && !isOnCooldown)
         {
             chargeTimer += Time.deltaTime;
 
@@ -378,13 +243,6 @@ public class MopPatrol : MonoBehaviour
             return;
         }
 
-        if (IsPlayerInsideClassroom())
-        {
-            ResetAttackLikeState();
-            StartReturnToPattern();
-            return;
-        }
-
         RotateTowards(attackTargetPosition);
 
         transform.position = Vector3.MoveTowards(
@@ -397,9 +255,7 @@ public class MopPatrol : MonoBehaviour
 
         if (attackTimer >= attackDuration || Vector3.Distance(transform.position, attackTargetPosition) < 0.1f)
         {
-            float damageRadius = (chaseStartedFromState == EnemyState.Lookout)
-                ? lookoutAttackRadius + 0.5f
-                : patrolAttackRadius + 0.5f;
+            float damageRadius = patrolAttackRadius + 0.5f;
 
             if (Vector3.Distance(transform.position, player.transform.position) <= damageRadius)
                 player.TakeDamage(player.maxHP * attackDamagePercent);
@@ -472,34 +328,20 @@ public class MopPatrol : MonoBehaviour
             movingRight = savedMovingRight;
             chargeTimer = 0f;
 
-            if (chaseStartedFromState == EnemyState.Lookout)
-                EnterLookoutMode();
-            else
-                EnterPatrolMode();
+            EnterPatrolMode();
         }
     }
 
     private bool CanSeePlayer(float radius)
     {
-        if (player == null) return false;
-        if (player.IsHidden) return false;
-        if (IsPlayerInsideClassroom()) return false;
+        if (player == null)
+            return false;
+
+        if (player.IsHidden)
+            return false;
 
         float distance = Vector3.Distance(transform.position, player.transform.position);
         return distance <= radius;
-    }
-
-    private bool IsPlayerInsideClassroom()
-    {
-        if (player == null) return false;
-        if (classroomMask.value == 0) return false;
-
-        return Physics.CheckSphere(
-            player.transform.position,
-            classroomCheckRadius,
-            classroomMask,
-            QueryTriggerInteraction.Collide
-        );
     }
 
     private void UpdateCooldown()
@@ -560,12 +402,6 @@ public class MopPatrol : MonoBehaviour
 
     private void OnDrawGizmosSelected()
     {
-        Gizmos.color = Color.yellow;
-        Gizmos.DrawWireSphere(transform.position, lookoutDetectionRadius);
-
-        Gizmos.color = new Color(1f, 0.3f, 0.3f);
-        Gizmos.DrawWireSphere(transform.position, lookoutAttackRadius);
-
         Gizmos.color = Color.cyan;
         Gizmos.DrawWireSphere(transform.position, patrolDetectionRadius);
 

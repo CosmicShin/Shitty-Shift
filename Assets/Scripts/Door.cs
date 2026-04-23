@@ -9,6 +9,9 @@ public class Door : InteractableBase
     public bool useLocalSpace = true;
     public bool startOpen = false;
 
+    [Header("Closed Door")]
+    public bool isClosedDoor = false;
+
     [Header("Auto Close")]
     public bool autoClose = true;
     public float autoCloseDelay = 3f;
@@ -81,6 +84,12 @@ public class Door : InteractableBase
     {
         if (isMoving)
             return;
+
+        if (isClosedDoor && !isOpen)
+        {
+            HintManager.Instance?.ShowHint("Weird, the doors are locked... I should try the other side");
+            return;
+        }
 
         if (moveCoroutine != null)
             StopCoroutine(moveCoroutine);

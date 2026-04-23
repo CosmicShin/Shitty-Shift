@@ -745,8 +745,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 011c76390bae3a44aac686abc34e4888, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  door: {fileID: 449604630}
-  openOnce: 0
 --- !u!1 &165171750
 GameObject:
   m_ObjectHideFlags: 0
@@ -1328,8 +1326,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 011c76390bae3a44aac686abc34e4888, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  door: {fileID: 1783423467}
-  openOnce: 0
 --- !u!1 &298248409
 GameObject:
   m_ObjectHideFlags: 0
@@ -3765,8 +3761,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 011c76390bae3a44aac686abc34e4888, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  door: {fileID: 165171752}
-  openOnce: 0
 --- !u!65 &885997791
 BoxCollider:
   m_ObjectHideFlags: 0
@@ -3799,8 +3793,8 @@ GameObject:
   - component: {fileID: 888250866}
   - component: {fileID: 888250865}
   - component: {fileID: 888250864}
-  - component: {fileID: 888250863}
   - component: {fileID: 888250867}
+  - component: {fileID: 888250868}
   m_Layer: 0
   m_Name: Enemy
   m_TagString: Enemy
@@ -3808,41 +3802,6 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!114 &888250863
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 888250862}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 6bdf49982d8789f4a9d79b280fa9e6e4, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  speed: 3
-  patrolWaypoints:
-  - {fileID: 2005686524}
-  - {fileID: 43318328}
-  - {fileID: 98535179}
-  - {fileID: 443164875}
-  - {fileID: 1784934872}
-  - {fileID: 179421106}
-  - {fileID: 1834901132}
-  - {fileID: 1645370733}
-  - {fileID: 10225118}
-  - {fileID: 493837542}
-  detectionRadius: 5
-  chargeTime: 1
-  attackSpeed: 15
-  attackDuration: 0.5
-  attackCooldown: 10
-  attackDamagePercent: 0.2
-  jumpscareDuration: 2
-  jumpscareShakeIntensity: 1
-  faceDistance: 0.7
-  enemyShakeAmount: 0.1
-  attackOffset: 0
 --- !u!23 &888250864
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -3940,6 +3899,39 @@ Rigidbody:
   m_Interpolate: 0
   m_Constraints: 116
   m_CollisionDetection: 0
+--- !u!114 &888250868
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 888250862}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 71777b42002f9e3438abaf89a454ca65, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  patrolWaypoints: []
+  patrolSpeed: 4
+  chaseSpeed: 7
+  returnSpeed: 5
+  rotationSpeed: 10
+  detectionRadius: 16
+  attackRadius: 2.8
+  classroomMask:
+    serializedVersion: 2
+    m_Bits: 0
+  classroomCheckRadius: 0.3
+  chargeTime: 0.5
+  attackSpeed: 10
+  attackDuration: 0.6
+  attackCooldown: 1.2
+  attackDamagePercent: 0.35
+  jumpscareDuration: 2
+  jumpscareShakeIntensity: 1.5
+  faceDistance: 0.7
+  enemyShakeAmount: 0.15
+  attackOffset: 0
 --- !u!1 &889932039
 GameObject:
   m_ObjectHideFlags: 0
@@ -4016,8 +4008,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 011c76390bae3a44aac686abc34e4888, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  door: {fileID: 239610057}
-  openOnce: 0
 --- !u!65 &918123973
 BoxCollider:
   m_ObjectHideFlags: 0
@@ -5260,8 +5250,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 011c76390bae3a44aac686abc34e4888, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  door: {fileID: 1478210913}
-  openOnce: 0
 --- !u!65 &1237823090
 BoxCollider:
   m_ObjectHideFlags: 0
@@ -6878,8 +6866,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 011c76390bae3a44aac686abc34e4888, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  door: {fileID: 558812806}
-  openOnce: 0
 --- !u!65 &1578915833
 BoxCollider:
   m_ObjectHideFlags: 0
