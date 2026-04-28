@@ -1,56 +1,110 @@
+using System.Collections;
 using UnityEngine;
 
-public class EnemyPatrol : MonoBehaviour
+public class MopPatrol : MonoBehaviour
 {
-    [Header("Patrol Settings")]
-    public float speed = 3f;
+    public enum EnemyState
+    {
+        Lookout,
+        Patrol,
+        Chase,
+        Attack,
+        Jumpscare,
+        ReturnToPattern
+    }
+
+    [Header("Patrol Area")]
     public float leftX = -180f;
     public float rightX = -65f;
     public bool startMovingRight = true;
 
+    [Header("Speeds")]
+    public float patrolSpeed = 2.5f;
+    public float lookoutChaseSpeed = 6f;
+    public float patrolChaseSpeed = 4.5f;
+    public float returnSpeed = 3f;
+    public float rotationSpeed = 8f;
+
+    [Header("Lookout Detection")]
+    public float lookoutDetectionRadius = 14f;
+    public float lookoutAttackRadius = 2f;
+
+    [Header("Patrol Detection")]
+    public float patrolDetectionRadius = 9f;
+    public float patrolAttackRadius = 2.2f;
+
+    [Header("Intro Lock")]
+    public bool introLookoutLocked = true;
+
+    [Header("Lookout / Patrol Pattern")]
+    public float lookoutMinDuration = 2f;
+    public float lookoutMaxDuration = 5f;
+    public float patrolEndPauseMin = 0.4f;
+    public float patrolEndPauseMax = 1.2f;
+    public int patrolEndsBeforeLookoutMin = 2;
+    public int patrolEndsBeforeLookoutMax = 5;
+
+    [Header("Classroom / Safe Zone")]
+    public LayerMask classroomMask = 0;
+    public float classroomCheckRadius = 0.3f;
+
     [Header("Attack Settings")]
-    public float detectionRadius = 10f;
-    public float chargeTime = 3f;
+    public float chargeTime = 1.2f;
     public float attackSpeed = 8f;
     public float attackDuration = 0.6f;
     public float attackCooldown = 2f;
-    [Range(0f, 1f)]
-    public float attackDamagePercent = 0.2f;
+    [Range(0f, 1f)] public float attackDamagePercent = 0.2f;
     public float jumpscareDuration = 2f;
     public float jumpscareShakeIntensity = 1f;
     public float faceDistance = 0.7f;
     public float enemyShakeAmount = 0.1f;
     public float attackOffset = 0f;
 
+    private PlayerMovement player;
+
+    private EnemyState currentState;
+    private EnemyState chaseStartedFromState;
+
     private Vector3 targetPosition;
     private Vector3 attackTargetPosition;
-    private bool movingRight;
 
-    private PlayerMovement player;
-    private float chargeTimer;
-    private bool isAttacking;
+    private bool movingRight;
     private bool isOnCooldown;
-    private bool isReturningToPatrol;
-    private bool isJumpscaring;
+    private bool hasSeenPlayerOnce;
+    private bool hasShownDetectionHint;
+
+    private float chargeTimer;
     private float attackTimer;
     private float cooldownTimer;
     private float jumpscareTimer;
+    private float lookoutTimer;
 
-    private Vector3 savedPatrolPosition;
-    private Quaternion savedPatrolRotation;
+    private int patrolEndCount = 0;
+    private int patrolEndsBeforeLookout = 3;
+
+    private Vector3 savedPatternPosition;
+    private Quaternion savedPatternRotation;
     private Vector3 savedTargetPosition;
     private bool savedMovingRight;
 
+    private Coroutine patrolPauseCoroutine;
+
     private void Start()
     {
+        player = FindFirstObjectByType<PlayerMovement>();
+
+        if (player == null)
+            Debug.LogWarning("MopPatrol could not find a PlayerMovement in the scene.");
+
         movingRight = startMovingRight;
         SetTargetPosition();
         RotateTowardsTarget();
 
-        player = FindFirstObjectByType<PlayerMovement>();
+        patrolEndsBeforeLookout = Random.Range(patrolEndsBeforeLookoutMin, patrolEndsBeforeLookoutMax + 1);
 
-        if (player == null)
-            Debug.LogWarning("EnemyPatrol could not find a PlayerMovement in the scene.");
+        hasSeenPlayerOnce = false;
+        hasShownDetectionHint = false;
+        EnterLookoutMode();
     }
 
     private void Update()
@@ -58,43 +112,256 @@ public class EnemyPatrol : MonoBehaviour
         if (IntroManager.IsIntroActive)
             return;
 
-        if (player != null)
-            UpdatePlayerDetection();
-
-        if (isAttacking)
-        {
-            UpdateAttack();
-            return;
-        }
-
-        if (isJumpscaring)
-        {
-            UpdateJumpscare();
-            return;
-        }
-
-        if (isReturningToPatrol)
-        {
-            UpdateReturnToPatrol();
-            return;
-        }
-
         if (isOnCooldown)
             UpdateCooldown();
 
-        UpdatePatrol();
+        switch (currentState)
+        {
+            case EnemyState.Lookout:
+                UpdateLookout();
+                break;
+
+            case EnemyState.Patrol:
+                UpdatePatrol();
+                break;
+
+            case EnemyState.Chase:
+                UpdateChase();
+                break;
+
+            case EnemyState.Attack:
+                UpdateAttack();
+                break;
+
+            case EnemyState.Jumpscare:
+                UpdateJumpscare();
+                break;
+
+            case EnemyState.ReturnToPattern:
+                UpdateReturnToPattern();
+                break;
+        }
     }
 
-    private void UpdatePlayerDetection()
+    private void EnterLookoutMode()
     {
+        currentState = EnemyState.Lookout;
+        lookoutTimer = Random.Range(lookoutMinDuration, lookoutMaxDuration);
+
+        if (patrolPauseCoroutine != null)
+        {
+            StopCoroutine(patrolPauseCoroutine);
+            patrolPauseCoroutine = null;
+        }
+    }
+
+    private void EnterPatrolMode()
+    {
+        currentState = EnemyState.Patrol;
+
+        if (patrolPauseCoroutine != null)
+        {
+            StopCoroutine(patrolPauseCoroutine);
+            patrolPauseCoroutine = null;
+        }
+
+        SetTargetPosition();
+        RotateTowardsTarget();
+    }
+
+    private void EnterChaseMode(EnemyState startedFrom)
+    {
+        if (player == null || player.IsHidden)
+            return;
+
+        currentState = EnemyState.Chase;
+        chaseStartedFromState = startedFrom;
+
+        savedPatternPosition = transform.position;
+        savedPatternRotation = transform.rotation;
+        savedTargetPosition = targetPosition;
+        savedMovingRight = movingRight;
+
+        chargeTimer = 0f;
+    }
+
+    private void EnterAttackMode()
+    {
+        if (player == null)
+        {
+            StartReturnToPattern();
+            return;
+        }
+
+        currentState = EnemyState.Attack;
+        attackTimer = 0f;
+        chargeTimer = 0f;
+
+        savedPatternPosition = transform.position;
+        savedPatternRotation = transform.rotation;
+        savedTargetPosition = targetPosition;
+        savedMovingRight = movingRight;
+
+        Vector3 forward = player.transform.forward;
+        forward.y = 0f;
+        forward = forward.sqrMagnitude > 0.0001f ? forward.normalized : Vector3.forward;
+
+        attackTargetPosition = player.transform.position + forward * faceDistance;
+        attackTargetPosition.y = transform.position.y;
+
+        Vector3 directionFromPlayerToEnemy = (transform.position - player.transform.position).normalized;
+        attackTargetPosition += directionFromPlayerToEnemy * attackOffset;
+
+        RotateTowards(attackTargetPosition);
+    }
+
+    private void StartReturnToPattern()
+    {
+        if (player != null)
+            player.StopJumpscare();
+
+        currentState = EnemyState.ReturnToPattern;
+    }
+
+    private void UpdateLookout()
+    {
+        if (player == null)
+            return;
+
+        if (!player.IsHidden && !IsPlayerInsideClassroom())
+        {
+            float distanceToPlayer = Vector3.Distance(transform.position, player.transform.position);
+
+            if (distanceToPlayer <= lookoutDetectionRadius)
+            {
+                hasSeenPlayerOnce = true;
+                introLookoutLocked = false;
+
+                if (!hasShownDetectionHint)
+                {
+                    hasShownDetectionHint = true;
+                    HintManager.Instance?.ShowHint("Is something there?");
+                }
+
+                EnterChaseMode(EnemyState.Lookout);
+                return;
+            }
+        }
+
+        if (introLookoutLocked && !hasSeenPlayerOnce)
+            return;
+
+        lookoutTimer -= Time.deltaTime;
+        if (lookoutTimer <= 0f)
+        {
+            patrolEndCount = 0;
+            patrolEndsBeforeLookout = Random.Range(patrolEndsBeforeLookoutMin, patrolEndsBeforeLookoutMax + 1);
+            EnterPatrolMode();
+        }
+    }
+
+    private void UpdatePatrol()
+    {
+        if (player != null && CanSeePlayer(patrolDetectionRadius))
+        {
+            EnterChaseMode(EnemyState.Patrol);
+            return;
+        }
+
+        Vector3 current = transform.position;
+        Vector3 next = Vector3.MoveTowards(current, targetPosition, patrolSpeed * Time.deltaTime);
+        transform.position = next;
+
+        SmoothRotateTowards(targetPosition);
+
+        if (Vector3.Distance(transform.position, targetPosition) <= 0.05f)
+        {
+            transform.position = targetPosition;
+
+            if (patrolPauseCoroutine == null)
+                patrolPauseCoroutine = StartCoroutine(PatrolTurnRoutine());
+        }
+    }
+
+    private IEnumerator PatrolTurnRoutine()
+    {
+        float waitTime = Random.Range(patrolEndPauseMin, patrolEndPauseMax);
+        yield return new WaitForSeconds(waitTime);
+
+        patrolEndCount++;
+
+        if (patrolEndCount >= patrolEndsBeforeLookout)
+        {
+            patrolEndCount = 0;
+            patrolEndsBeforeLookout = Random.Range(patrolEndsBeforeLookoutMin, patrolEndsBeforeLookoutMax + 1);
+            patrolPauseCoroutine = null;
+            EnterLookoutMode();
+            yield break;
+        }
+
+        movingRight = !movingRight;
+        SetTargetPosition();
+        RotateTowardsTarget();
+
+        patrolPauseCoroutine = null;
+    }
+
+    private void UpdateChase()
+    {
+        if (player == null)
+        {
+            StartReturnToPattern();
+            return;
+        }
+
+        if (player.IsHidden)
+        {
+            StartReturnToPattern();
+            return;
+        }
+
+        if (IsPlayerInsideClassroom())
+        {
+            StartReturnToPattern();
+            return;
+        }
+
         float distanceToPlayer = Vector3.Distance(transform.position, player.transform.position);
 
-        if (distanceToPlayer <= detectionRadius && !isAttacking && !isOnCooldown && !isReturningToPatrol)
+        float chaseSpeed;
+        float activeAttackRadius;
+
+        if (chaseStartedFromState == EnemyState.Lookout)
+        {
+            chaseSpeed = lookoutChaseSpeed;
+            activeAttackRadius = lookoutAttackRadius;
+        }
+        else
+        {
+            chaseSpeed = patrolChaseSpeed;
+            activeAttackRadius = patrolAttackRadius;
+        }
+
+        Vector3 chaseTarget = player.transform.position;
+        chaseTarget.y = transform.position.y;
+
+        transform.position = Vector3.MoveTowards(
+            transform.position,
+            chaseTarget,
+            chaseSpeed * Time.deltaTime
+        );
+
+        SmoothRotateTowards(chaseTarget);
+
+        if (distanceToPlayer <= activeAttackRadius && !isOnCooldown)
         {
             chargeTimer += Time.deltaTime;
 
             if (chargeTimer >= chargeTime)
-                StartAttack();
+            {
+                EnterAttackMode();
+                return;
+            }
         }
         else
         {
@@ -102,41 +369,19 @@ public class EnemyPatrol : MonoBehaviour
         }
     }
 
-    private void StartAttack()
-    {
-        isAttacking = true;
-        attackTimer = 0f;
-        chargeTimer = 0f;
-
-        savedPatrolPosition = transform.position;
-        savedPatrolRotation = transform.rotation;
-        savedTargetPosition = targetPosition;
-        savedMovingRight = movingRight;
-
-        if (player != null)
-        {
-            Vector3 forward = player.transform.forward;
-            forward.y = 0f;
-            forward = forward.sqrMagnitude > 0.0001f ? forward.normalized : Vector3.forward;
-            attackTargetPosition = player.transform.position + forward * faceDistance;
-            attackTargetPosition.y = transform.position.y;
-
-            // Apply attack offset towards the monster
-            Vector3 directionFromPlayerToMonster = (transform.position - player.transform.position).normalized;
-            attackTargetPosition += directionFromPlayerToMonster * attackOffset;
-
-            // Lock look during attack
-            player.SetLookLock(transform, attackDuration + jumpscareDuration, 0f);
-        }
-
-        RotateTowards(attackTargetPosition);
-    }
-
     private void UpdateAttack()
     {
         if (player == null)
         {
-            ResetAttackState();
+            ResetAttackLikeState();
+            StartReturnToPattern();
+            return;
+        }
+
+        if (IsPlayerInsideClassroom())
+        {
+            ResetAttackLikeState();
+            StartReturnToPattern();
             return;
         }
 
@@ -152,7 +397,11 @@ public class EnemyPatrol : MonoBehaviour
 
         if (attackTimer >= attackDuration || Vector3.Distance(transform.position, attackTargetPosition) < 0.1f)
         {
-            if (Vector3.Distance(transform.position, player.transform.position) <= detectionRadius)
+            float damageRadius = (chaseStartedFromState == EnemyState.Lookout)
+                ? lookoutAttackRadius + 0.5f
+                : patrolAttackRadius + 0.5f;
+
+            if (Vector3.Distance(transform.position, player.transform.position) <= damageRadius)
                 player.TakeDamage(player.maxHP * attackDamagePercent);
 
             PerformJumpscare();
@@ -164,8 +413,7 @@ public class EnemyPatrol : MonoBehaviour
         if (player != null)
             player.StartJumpscare(transform, jumpscareDuration, jumpscareShakeIntensity);
 
-        isAttacking = false;
-        isJumpscaring = true;
+        currentState = EnemyState.Jumpscare;
         jumpscareTimer = jumpscareDuration;
         isOnCooldown = true;
         cooldownTimer = attackCooldown;
@@ -175,7 +423,7 @@ public class EnemyPatrol : MonoBehaviour
     {
         if (player == null)
         {
-            StartReturnToPatrol();
+            StartReturnToPattern();
             return;
         }
 
@@ -184,9 +432,8 @@ public class EnemyPatrol : MonoBehaviour
         Vector3 targetFacePosition = player.transform.position + player.transform.forward * faceDistance;
         targetFacePosition.y = transform.position.y;
 
-        // Apply attack offset towards the monster
-        Vector3 directionFromPlayerToMonster = (transform.position - player.transform.position).normalized;
-        targetFacePosition += directionFromPlayerToMonster * attackOffset;
+        Vector3 directionFromPlayerToEnemy = (transform.position - player.transform.position).normalized;
+        targetFacePosition += directionFromPlayerToEnemy * attackOffset;
 
         Vector3 basePosition = Vector3.MoveTowards(
             transform.position,
@@ -196,81 +443,80 @@ public class EnemyPatrol : MonoBehaviour
 
         Vector3 shake = Random.insideUnitSphere * enemyShakeAmount;
         shake.y *= 0.3f;
+
         transform.position = basePosition + shake;
         RotateTowards(player.transform.position);
 
         if (jumpscareTimer <= 0f)
-            StartReturnToPatrol();
+            StartReturnToPattern();
     }
 
-    private void StartReturnToPatrol()
+    private void UpdateReturnToPattern()
     {
-        if (player != null)
-            player.StopJumpscare();
-
-        isJumpscaring = false;
-        isReturningToPatrol = true;
-    }
-
-    private void UpdateReturnToPatrol()
-    {
-        Vector3 returnPosition = savedPatrolPosition;
+        Vector3 returnPosition = savedPatternPosition;
         returnPosition.y = transform.position.y;
 
-        if (Vector3.Distance(transform.position, returnPosition) > 0.05f)
-        {
-            transform.position = Vector3.MoveTowards(
-                transform.position,
-                returnPosition,
-                speed * Time.deltaTime
-            );
+        transform.position = Vector3.MoveTowards(
+            transform.position,
+            returnPosition,
+            returnSpeed * Time.deltaTime
+        );
 
-            Vector3 direction = returnPosition - transform.position;
-            direction.y = 0f;
-            if (direction.sqrMagnitude > 0.0001f)
-                transform.rotation = Quaternion.LookRotation(direction);
-        }
-        else
+        SmoothRotateTowards(returnPosition);
+
+        if (Vector3.Distance(transform.position, returnPosition) <= 0.05f)
         {
             transform.position = returnPosition;
-            transform.rotation = savedPatrolRotation;
-            isReturningToPatrol = false;
+            transform.rotation = savedPatternRotation;
             targetPosition = savedTargetPosition;
             movingRight = savedMovingRight;
+            chargeTimer = 0f;
+
+            if (chaseStartedFromState == EnemyState.Lookout)
+                EnterLookoutMode();
+            else
+                EnterPatrolMode();
         }
+    }
+
+    private bool CanSeePlayer(float radius)
+    {
+        if (player == null) return false;
+        if (player.IsHidden) return false;
+        if (IsPlayerInsideClassroom()) return false;
+
+        float distance = Vector3.Distance(transform.position, player.transform.position);
+        return distance <= radius;
+    }
+
+    private bool IsPlayerInsideClassroom()
+    {
+        if (player == null) return false;
+        if (classroomMask.value == 0) return false;
+
+        return Physics.CheckSphere(
+            player.transform.position,
+            classroomCheckRadius,
+            classroomMask,
+            QueryTriggerInteraction.Collide
+        );
     }
 
     private void UpdateCooldown()
     {
         cooldownTimer -= Time.deltaTime;
         if (cooldownTimer <= 0f)
+        {
+            cooldownTimer = 0f;
             isOnCooldown = false;
+        }
     }
 
-    private void ResetAttackState()
+    private void ResetAttackLikeState()
     {
-        isAttacking = false;
-        isOnCooldown = false;
-        isReturningToPatrol = false;
         chargeTimer = 0f;
         attackTimer = 0f;
-        cooldownTimer = 0f;
-    }
-
-    private void UpdatePatrol()
-    {
-        if (Mathf.Approximately(transform.position.x, targetPosition.x))
-        {
-            movingRight = !movingRight;
-            SetTargetPosition();
-            RotateTowardsTarget();
-        }
-
-        transform.position = Vector3.MoveTowards(
-            transform.position,
-            targetPosition,
-            speed * Time.deltaTime
-        );
+        jumpscareTimer = 0f;
     }
 
     private void SetTargetPosition()
@@ -284,11 +530,7 @@ public class EnemyPatrol : MonoBehaviour
 
     private void RotateTowardsTarget()
     {
-        Vector3 direction = targetPosition - transform.position;
-        direction.y = 0f;
-
-        if (direction.sqrMagnitude > 0.0001f)
-            transform.rotation = Quaternion.LookRotation(direction);
+        RotateTowards(targetPosition);
     }
 
     private void RotateTowards(Vector3 worldPosition)
@@ -300,9 +542,34 @@ public class EnemyPatrol : MonoBehaviour
             transform.rotation = Quaternion.LookRotation(direction);
     }
 
+    private void SmoothRotateTowards(Vector3 worldPosition)
+    {
+        Vector3 direction = worldPosition - transform.position;
+        direction.y = 0f;
+
+        if (direction.sqrMagnitude <= 0.0001f)
+            return;
+
+        Quaternion targetRotation = Quaternion.LookRotation(direction);
+        transform.rotation = Quaternion.Slerp(
+            transform.rotation,
+            targetRotation,
+            rotationSpeed * Time.deltaTime
+        );
+    }
+
     private void OnDrawGizmosSelected()
     {
+        Gizmos.color = Color.yellow;
+        Gizmos.DrawWireSphere(transform.position, lookoutDetectionRadius);
+
+        Gizmos.color = new Color(1f, 0.3f, 0.3f);
+        Gizmos.DrawWireSphere(transform.position, lookoutAttackRadius);
+
+        Gizmos.color = Color.cyan;
+        Gizmos.DrawWireSphere(transform.position, patrolDetectionRadius);
+
         Gizmos.color = Color.red;
-        Gizmos.DrawWireSphere(transform.position, detectionRadius);
+        Gizmos.DrawWireSphere(transform.position, patrolAttackRadius);
     }
 }

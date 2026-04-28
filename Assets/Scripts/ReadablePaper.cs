@@ -8,6 +8,8 @@ public class ReadablePaper : InteractableBase
     [TextArea(5, 25)]
     public string documentText;
 
+    private bool hasBeenClosedOnce = false;
+
     private void Reset()
     {
         interactionPrompt = "Press F to Read";
@@ -32,6 +34,12 @@ public class ReadablePaper : InteractableBase
         if (DocumentUIManager.Instance.IsShowing(this))
         {
             DocumentUIManager.Instance.CloseDocument(player);
+
+            if (!hasBeenClosedOnce)
+            {
+                hasBeenClosedOnce = true;
+                HintManager.Instance?.ShowHint("What happened here?");
+            }
         }
         else
         {
