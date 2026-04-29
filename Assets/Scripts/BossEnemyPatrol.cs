@@ -5,11 +5,10 @@ public class BossEnemyPatrol : MonoBehaviour
 {
     public enum EnemyState
     {
+        Idle,
         Patrol,
         Chase,
-        Attack,
-        Jumpscare,
-        ReturnToPattern
+        Attack
     }
 
     [Header("Patrol Area")]
@@ -25,6 +24,7 @@ public class BossEnemyPatrol : MonoBehaviour
 
     [Header("Patrol Detection")]
     public float patrolDetectionRadius = 9f;
+    public float closeDetectionRadius = 2f;
 
     [Header("Patrol Attack")]
     public float patrolAttackRadius = 2.2f;
@@ -36,11 +36,9 @@ public class BossEnemyPatrol : MonoBehaviour
     public float attackCooldown = 2f;
     [Range(0f, 1f)]
     public float attackDamagePercent = 0.2f;
-    public float jumpscareDuration = 2f;
-    public float jumpscareShakeIntensity = 1f;
     public float faceDistance = 0.7f;
-    public float enemyShakeAmount = 0.1f;
     public float attackOffset = 0f;
+    public float idleTime = 2f;
 
     private PlayerMovement player;
 
@@ -55,7 +53,7 @@ public class BossEnemyPatrol : MonoBehaviour
     private float chargeTimer;
     private float attackTimer;
     private float cooldownTimer;
-    private float jumpscareTimer;
+    private float idleTimer;
 
     private Vector3 savedPatternPosition;
     private Quaternion savedPatternRotation;
@@ -86,6 +84,10 @@ public class BossEnemyPatrol : MonoBehaviour
 
         switch (currentState)
         {
+            case EnemyState.Idle:
+                UpdateIdle();
+                break;
+
             case EnemyState.Patrol:
                 UpdatePatrol();
                 break;
@@ -96,14 +98,6 @@ public class BossEnemyPatrol : MonoBehaviour
 
             case EnemyState.Attack:
                 UpdateAttack();
-                break;
-
-            case EnemyState.Jumpscare:
-                UpdateJumpscare();
-                break;
-
-            case EnemyState.ReturnToPattern:
-                UpdateReturnToPattern();
                 break;
         }
     }
@@ -117,9 +111,6 @@ public class BossEnemyPatrol : MonoBehaviour
 
     private void EnterChaseMode()
     {
-        if (player == null || player.IsHidden)
-            return;
-
         currentState = EnemyState.Chase;
 
         savedPatternPosition = transform.position;
@@ -134,7 +125,7 @@ public class BossEnemyPatrol : MonoBehaviour
     {
         if (player == null)
         {
-            StartReturnToPattern();
+            EnterIdleMode();
             return;
         }
 
@@ -160,17 +151,33 @@ public class BossEnemyPatrol : MonoBehaviour
         RotateTowards(attackTargetPosition);
     }
 
-    private void StartReturnToPattern()
+    private void EnterIdleMode()
     {
-        if (player != null)
-            player.StopJumpscare();
+        currentState = EnemyState.Idle;
+        transform.position = savedPatternPosition;
+        transform.rotation = savedPatternRotation;
+        idleTimer = idleTime;
+    }
 
-        currentState = EnemyState.ReturnToPattern;
+    private void UpdateIdle()
+    {
+        idleTimer -= Time.deltaTime;
+        if (idleTimer <= 0 || (player != null && (CanDetectPlayer(patrolDetectionRadius) || CanDetectPlayer(closeDetectionRadius, true))))
+        {
+            if (player != null && (CanDetectPlayer(patrolDetectionRadius) || CanDetectPlayer(closeDetectionRadius, true)))
+            {
+                EnterChaseMode();
+            }
+            else
+            {
+                EnterPatrolMode();
+            }
+        }
     }
 
     private void UpdatePatrol()
     {
-        if (player != null && CanSeePlayer(patrolDetectionRadius))
+        if (player != null && (CanDetectPlayer(patrolDetectionRadius) || CanDetectPlayer(closeDetectionRadius, true)))
         {
             EnterChaseMode();
             return;
@@ -195,13 +202,13 @@ public class BossEnemyPatrol : MonoBehaviour
     {
         if (player == null)
         {
-            StartReturnToPattern();
+            EnterIdleMode();
             return;
         }
 
-        if (player.IsHidden)
+        if (!CanDetectPlayer(patrolDetectionRadius) && !CanDetectPlayer(closeDetectionRadius, true))
         {
-            StartReturnToPattern();
+            EnterIdleMode();
             return;
         }
 
@@ -239,7 +246,7 @@ public class BossEnemyPatrol : MonoBehaviour
         if (player == null)
         {
             ResetAttackLikeState();
-            StartReturnToPattern();
+            EnterIdleMode();
             return;
         }
 
@@ -260,84 +267,19 @@ public class BossEnemyPatrol : MonoBehaviour
             if (Vector3.Distance(transform.position, player.transform.position) <= damageRadius)
                 player.TakeDamage(player.maxHP * attackDamagePercent);
 
-            PerformJumpscare();
+            EnterIdleMode();
         }
     }
 
-    private void PerformJumpscare()
-    {
-        if (player != null)
-            player.StartJumpscare(transform, jumpscareDuration, jumpscareShakeIntensity);
 
-        currentState = EnemyState.Jumpscare;
-        jumpscareTimer = jumpscareDuration;
-        isOnCooldown = true;
-        cooldownTimer = attackCooldown;
-    }
 
-    private void UpdateJumpscare()
-    {
-        if (player == null)
-        {
-            StartReturnToPattern();
-            return;
-        }
 
-        jumpscareTimer -= Time.deltaTime;
-
-        Vector3 targetFacePosition = player.transform.position + player.transform.forward * faceDistance;
-        targetFacePosition.y = transform.position.y;
-
-        Vector3 directionFromPlayerToEnemy = (transform.position - player.transform.position).normalized;
-        targetFacePosition += directionFromPlayerToEnemy * attackOffset;
-
-        Vector3 basePosition = Vector3.MoveTowards(
-            transform.position,
-            targetFacePosition,
-            attackSpeed * Time.deltaTime
-        );
-
-        Vector3 shake = Random.insideUnitSphere * enemyShakeAmount;
-        shake.y *= 0.3f;
-
-        transform.position = basePosition + shake;
-        RotateTowards(player.transform.position);
-
-        if (jumpscareTimer <= 0f)
-            StartReturnToPattern();
-    }
-
-    private void UpdateReturnToPattern()
-    {
-        Vector3 returnPosition = savedPatternPosition;
-        returnPosition.y = transform.position.y;
-
-        transform.position = Vector3.MoveTowards(
-            transform.position,
-            returnPosition,
-            returnSpeed * Time.deltaTime
-        );
-
-        SmoothRotateTowards(returnPosition);
-
-        if (Vector3.Distance(transform.position, returnPosition) <= 0.05f)
-        {
-            transform.position = returnPosition;
-            transform.rotation = savedPatternRotation;
-            targetPosition = savedTargetPosition;
-            movingRight = savedMovingRight;
-            chargeTimer = 0f;
-
-            EnterPatrolMode();
-        }
-    }
-
-    private bool CanSeePlayer(float radius)
+    private bool CanDetectPlayer(float radius, bool ignoreHiding = false)
     {
         if (player == null)
             return false;
 
-        if (player.IsHidden)
+        if (!ignoreHiding && player.IsHidden)
             return false;
 
         float distance = Vector3.Distance(transform.position, player.transform.position);
@@ -358,7 +300,6 @@ public class BossEnemyPatrol : MonoBehaviour
     {
         chargeTimer = 0f;
         attackTimer = 0f;
-        jumpscareTimer = 0f;
     }
 
     private void SetTargetPosition()
