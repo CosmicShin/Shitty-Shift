@@ -1,16 +1,17 @@
+using System.Linq;
 using UnityEngine;
+using UnityEngine.InputSystem;
 using TMPro;
 
 public class SafeLock : InteractableBase
 {
     [Header("Safe Code")]
     public string correctCode = "1234";
-    public int codeLength = 4;
 
     [Header("Safe UI")]
     public GameObject safePanel;
-    public TextMeshProUGUI inputText;
-    public TextMeshProUGUI feedbackText;
+    public TextMeshProUGUI[] digitDisplays = new TextMeshProUGUI[4];
+    public TextMeshProUGUI statusText;
 
     [Header("Reward")]
     public GameObject rewardObject;
@@ -18,12 +19,37 @@ public class SafeLock : InteractableBase
     public string wrongCodeMessage = "Wrong code.";
 
     [Header("Settings")]
-    public bool allowUnlimitedAttempts = true;
     public bool showWrongCodeHint = true;
 
-    private string currentInput = "";
+    private const int CombinationLength = 4;
+    private static readonly Key[] digitKeys = new[]
+    {
+        Key.Digit0, Key.Digit1, Key.Digit2, Key.Digit3, Key.Digit4,
+        Key.Digit5, Key.Digit6, Key.Digit7, Key.Digit8, Key.Digit9
+    };
+    private static readonly Key[] numpadKeys = new[]
+    {
+        Key.Numpad0, Key.Numpad1, Key.Numpad2, Key.Numpad3, Key.Numpad4,
+        Key.Numpad5, Key.Numpad6, Key.Numpad7, Key.Numpad8, Key.Numpad9
+    };
+
+    private char[] enteredDigits = new char[CombinationLength] { '0', '0', '0', '0' };
+    private int currentSlotIndex = 0;
     private bool isOpen = false;
     private PlayerMovement currentPlayer;
+
+    private void OnValidate()
+    {
+        if (correctCode == null)
+            correctCode = "0000";
+
+        correctCode = new string(correctCode.Where(char.IsDigit).ToArray());
+
+        if (correctCode.Length < 4)
+            correctCode = correctCode.PadRight(4, '0');
+        else if (correctCode.Length > 4)
+            correctCode = correctCode.Substring(0, 4);
+    }
 
     private void Start()
     {
@@ -33,8 +59,17 @@ public class SafeLock : InteractableBase
         if (rewardObject != null)
             rewardObject.SetActive(false);
 
-        UpdateInputUI();
-        SetFeedback("");
+        ResetEnteredDigits();
+        UpdateDigitDisplays();
+        UpdateStatusText("");
+    }
+
+    private void Update()
+    {
+        if (safePanel == null || !safePanel.activeSelf || currentPlayer == null)
+            return;
+
+        ReadDigitInput();
     }
 
     public override string GetInteractionPrompt()
@@ -55,9 +90,9 @@ public class SafeLock : InteractableBase
         if (safePanel != null)
             safePanel.SetActive(true);
 
-        currentInput = "";
-        UpdateInputUI();
-        SetFeedback("");
+        ResetEnteredDigits();
+        UpdateDigitDisplays();
+        UpdateStatusText("");
 
         if (currentPlayer != null)
             currentPlayer.SetReadingState(true);
@@ -66,32 +101,95 @@ public class SafeLock : InteractableBase
         Cursor.visible = true;
     }
 
-    public void InputNumber(string number)
+    private void ReadDigitInput()
     {
-        if (isOpen)
+        if (Keyboard.current == null)
             return;
 
-        if (currentInput.Length >= codeLength)
-            return;
+        if (TryReadDigitKey(out char digit))
+        {
+            if (currentSlotIndex < enteredDigits.Length)
+            {
+                enteredDigits[currentSlotIndex] = digit;
+                currentSlotIndex++;
+                UpdateDigitDisplays();
+            }
 
-        currentInput += number;
-        UpdateInputUI();
+            if (currentSlotIndex >= enteredDigits.Length)
+                ValidateCombination();
+        }
+        else if (Keyboard.current.backspaceKey.wasPressedThisFrame)
+        {
+            if (currentSlotIndex > 0)
+            {
+                currentSlotIndex--;
+                enteredDigits[currentSlotIndex] = '0';
+                UpdateDigitDisplays();
+                UpdateStatusText("Backspace");
+            }
+        }
+        else if (Keyboard.current.escapeKey.wasPressedThisFrame)
+        {
+            CloseSafeUI();
+        }
     }
 
-    public void ClearInput()
+    private bool TryReadDigitKey(out char digit)
     {
-        currentInput = "";
-        UpdateInputUI();
-        SetFeedback("");
+        digit = default;
+
+        if (Keyboard.current == null)
+            return false;
+
+        for (int i = 0; i < digitKeys.Length; i++)
+        {
+            if (Keyboard.current[digitKeys[i]].wasPressedThisFrame || Keyboard.current[numpadKeys[i]].wasPressedThisFrame)
+            {
+                digit = (char)('0' + i);
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public void InputNumber(string number)
+    {
+        if (isOpen || string.IsNullOrEmpty(number) || !char.IsDigit(number[0]))
+            return;
+
+        if (currentSlotIndex < enteredDigits.Length)
+        {
+            enteredDigits[currentSlotIndex] = number[0];
+            currentSlotIndex++;
+            UpdateDigitDisplays();
+
+            if (currentSlotIndex >= enteredDigits.Length)
+                ValidateCombination();
+        }
     }
 
     public void Backspace()
     {
-        if (currentInput.Length <= 0)
+        if (isOpen)
             return;
 
-        currentInput = currentInput.Substring(0, currentInput.Length - 1);
-        UpdateInputUI();
+        if (currentSlotIndex > 0)
+        {
+            currentSlotIndex--;
+            enteredDigits[currentSlotIndex] = '0';
+            UpdateDigitDisplays();
+        }
+    }
+
+    public void ClearInput()
+    {
+        if (isOpen)
+            return;
+
+        ResetEnteredDigits();
+        UpdateDigitDisplays();
+        UpdateStatusText("");
     }
 
     public void SubmitCode()
@@ -99,7 +197,14 @@ public class SafeLock : InteractableBase
         if (isOpen)
             return;
 
-        if (currentInput == correctCode)
+        ValidateCombination();
+    }
+
+    private void ValidateCombination()
+    {
+        string entered = new string(enteredDigits);
+
+        if (entered == correctCode)
         {
             OpenSafe();
             return;
@@ -107,12 +212,24 @@ public class SafeLock : InteractableBase
 
         if (showWrongCodeHint)
         {
-            SetFeedback(wrongCodeMessage);
+            UpdateStatusText(wrongCodeMessage);
             HintManager.Instance?.ShowHint(wrongCodeMessage);
         }
 
-        currentInput = "";
-        UpdateInputUI();
+        ResetEnteredDigits();
+        UpdateDigitDisplays();
+    }
+
+    private void OpenSafe()
+    {
+        isOpen = true;
+
+        if (rewardObject != null)
+            rewardObject.SetActive(true);
+
+        HintManager.Instance?.ShowHint(unlockMessage);
+
+        CloseSafeUI();
     }
 
     public void CloseSafeUI()
@@ -129,27 +246,25 @@ public class SafeLock : InteractableBase
         Cursor.visible = false;
     }
 
-    private void OpenSafe()
+    private void ResetEnteredDigits()
     {
-        isOpen = true;
-
-        if (rewardObject != null)
-            rewardObject.SetActive(true);
-
-        HintManager.Instance?.ShowHint(unlockMessage);
-
-        CloseSafeUI();
+        for (int i = 0; i < enteredDigits.Length; i++)
+            enteredDigits[i] = '0';
+        currentSlotIndex = 0;
     }
 
-    private void UpdateInputUI()
+    private void UpdateDigitDisplays()
     {
-        if (inputText != null)
-            inputText.text = currentInput;
+        for (int i = 0; i < digitDisplays.Length; i++)
+        {
+            if (digitDisplays[i] != null)
+                digitDisplays[i].text = enteredDigits[i].ToString();
+        }
     }
 
-    private void SetFeedback(string text)
+    private void UpdateStatusText(string text)
     {
-        if (feedbackText != null)
-            feedbackText.text = text;
+        if (statusText != null)
+            statusText.text = text;
     }
 }
